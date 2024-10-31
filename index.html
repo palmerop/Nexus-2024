@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='utf-8' />
+    <title>Nexus</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <script src='https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css' rel='stylesheet' />
+    <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto">
+
+    <style>
+	body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%;}
+	    
+        .mapboxgl-popup {
+        	-webkit-filter: drop-shadow(5px 5px 10px rgba(0, 0, 0, 0.6));
+        	filter: drop-shadow(5px 5px 10px rgba(0, 0, 0, 0.6));
+		font: 14px/22px 'Roboto Condensed', Arial, Helvetica, sans-serif;
+		max-width: 600px;
+		min-width: 400px;
+		align-content: left;
+		border-radius: 25px;
+		transform: translate(0, 0) !important;
+	}
+	
+	.mapboxgl-popup-tip{visibility: hidden}
+	    
+	.mapboxgl-popup-content {
+        	background-color: #fff;
+        	color: #4D4D4D;
+		padding: 30px 30px 30px
+    	}    
+	    
+	a:link {
+	color: #418FDE;
+  	background-color: transparent;
+ 	text-decoration: none;
+}
+    </style>
+
+	
+</head>
+
+<body>
+
+    <div id="map"></div>
+
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1IjoicmVsaWVmd2ViIiwiYSI6IldYR2ZuV3cifQ.eSPZMZWE6UyLtO0OH_-qrw';
+        
+	var map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/reliefweb/ckk5nhokq20ae17l8df8xothq',
+	    zoom: 2,
+	    minZoom: 2,
+	    maxZoom: 5,
+	    center: [0, 20],
+	    pitch: 0
+        });
+
+	map.dragRotate.disable();
+	map.touchZoomRotate.disableRotation();
+	map.addControl(new mapboxgl.NavigationControl());
+
+        map.on('load', function () {
+            // Loads data from the Google spreadsheet
+	    const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT2hve5fLELYJm6hga0DwXlLLXI6h_uhkm_PHUDhVtIdzbz7Yl3-fipInlsVUSGyCZhSzHUXK2JbKe6/pub?gid=0&single=true&output=csv';
+            Papa.parse(csvUrl, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function (results) {
+                    map.once('idle', () => {
+                        console.log(results.data);
+                        results.data.forEach(row => {
+                            map.setFeatureState({
+                                source: 'Nexus_fill',
+                                sourceLayer: 'wrl_polbnda_1m_ungis',
+                                id: row.COUNTRY,
+                            },
+                             //Other rows to load
+			    {
+                                Nexus: row.NEXUS
+                            });
+                        });
+
+                        map.addLayer({
+                            id: 'Nexus_fill',
+                            type: 'fill',
+                            source: 'Nexus_fill',
+                            'source-layer': 'wrl_polbnda_1m_ungis',
+			    layout: {},
+                            paint: {
+                                'fill-color': "#D4E5F7",
+                                'fill-opacity': [ "match", [ "feature-state", "Nexus" ], "YES", 1.0, 0.0 ]	    
+                            }
+			// Add the layer under boundaries and under labels
+                        }, "Dashed bnd 1m");
+
+                    })
+                }
+            });
+
+	    //Add the Nexus fill source layer
+            map.addSource('Nexus_fill', {
+                type: 'vector',
+                url: 'mapbox://reliefweb.3xu48qmc',
+                promoteId: 'Terr_Name'
+            });
+		
+		
+	     // This adds the Nexus 2024 marker tileset as source
+	     map.addSource('Nexus-markers', {
+		type: 'vector',
+		// Add the Nexus 2024 marker tileset
+		url: 'mapbox://reliefweb.cm2uv9cl8cly01tpgq29ngsaq-0t1n0'
+		},"Countries 2-4");
+	     
+	     map.addLayer({
+		'id': 'Nexus-markers-layer',
+		'type': 'circle',
+		'source': 'Nexus-markers',
+		'source-layer': 'wrl_nexus_2024',
+		'paint': {
+		'circle-color': '#418FDE',
+		'circle-radius': 6,
+		'circle-stroke-color': 'white',
+		'circle-stroke-width': 1
+		}
+	     });
+	});
+	
+	// Create a popup, but don't add it to the map yet.
+	const popup = new mapboxgl.Popup({
+	closeButton: true,
+	closeOnClick: true
+	});
+
+	map.on('click', 'Nexus-markers-layer', (e) => {
+
+	// Copy coordinates array.
+	const coordinates = e.features[0].geometry.coordinates.slice();
+	const name = e.features[0].properties.COUNTRY;
+	const subtitle = e.features[0].properties.SUBTITLE;
+	const text = e.features[0].properties.DESCRIPTION;
+	const s2021 = e.features[0].properties.S2021;
+	const s2024 = e.features[0].properties.S2024;
+	const pdfurl2021 = e.features[0].properties.LINK2021;
+	const pdfurl2024 = e.features[0].properties.LINK2024;
+
+	// Ensure that if the map is zoomed out such that multiple
+	// copies of the feature are visible, the popup appears
+	// over the copy being pointed to.
+	while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+	coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+	}
+
+	// Populate the popup and set its coordinates
+	// based on the feature found.
+	var bubbletext = '<H2>' + name + '</H2><P><i>' + subtitle + '</i><P>' + text + '</br>';
+		if (s2021 =='YES') {bubbletext = bubbletext + '<a href=' + pdfurl2021 + ' target="_blank">Click here to download the 2021 report</a></br>';
+		};
+		if (s2024 =='YES') {bubbletext = bubbletext + '<a href=' + pdfurl2024 + ' target="_blank">Click here to download the 2024 report</a>';
+		};
+		popup.setLngLat(coordinates).setHTML(bubbletext).addTo(map);
+	});
+	    
+	map.on('mouseenter', 'Nexus-markers-layer', () => {
+	map.getCanvas().style.cursor = 'pointer';
+	});
+	    
+	map.on('mouseleave', 'Nexus-markers-layer', () => {
+	map.getCanvas().style.cursor = '';
+	});
+	    
+    </script>
+
+</body>
+
+</html>
